@@ -1,20 +1,19 @@
 import dbClient from '../db';
 
 // Add Image
-export const addImage = async (imgData: { img_name: string; img: string }) => {
-  const { img_name, img } = imgData;
-
+export const uploadImages = async (imgs: string[]) => {
   try {
-    if (!img_name || !img) {
-      throw new Error("Please provide both img_name and img");
+    if (!imgs || imgs.length === 0) {
+      throw new Error("Please provide image data");
     }
 
+    // Create a query for inserting multiple images
     const query = `
-      INSERT INTO receive_case_project.img (img_name, img)
-      VALUES ($1, $2)
-      RETURNING img_name, img;
+      INSERT INTO receive_case_project.img (img)
+      VALUES ${imgs.map((_, index) => `($${index + 1})`).join(', ')}
+      RETURNING img;
     `;
-    const params = [img_name, img];
+    const params = [...imgs];
 
     const result = await dbClient.query(query, params);
 
@@ -24,8 +23,8 @@ export const addImage = async (imgData: { img_name: string; img: string }) => {
 
     return {
       success: true,
-      message: "Image added successfully",
-      data: result.rows[0],
+      message: "Images uploaded successfully",
+      data: result.rows,
     };
   } catch (error: unknown) {
     if (error instanceof Error) {
@@ -35,6 +34,9 @@ export const addImage = async (imgData: { img_name: string; img: string }) => {
     }
   }
 };
+
+
+
 
 // Get All Images
 export const getAllImages = async () => {

@@ -105,61 +105,67 @@ export const receiveCaseRoutes = (app: Elysia) => {
   app.get("/receive-case", async ({ query }: Context) => {
     const page = parseInt(query.page || "1");
     const search = query.search?.toLowerCase() || "";
-    const itemsPerPage = 5; // จำนวนข้อมูลต่อหน้า
+  
+    const itemsPerPage = 7; // Number of items per page
     const offset = (page - 1) * itemsPerPage;
-
+  
     try {
-      // Query ดึงข้อมูลจากตาราง receive_case โดยใช้พารามิเตอร์สำหรับการค้นหา และเรียงลำดับจากวันที่ใหม่ที่สุด
+      // Query to fetch data from the receive_case table with additional search for main_case_name
       const result = await dbClient.query(
         `SELECT 
-     rc.receive_case_id,
-     rc.create_date,
-     rc.problem,
-     rc.start_date,
-     rc.end_date,
-     rc.saev_em,
-     rc.correct,
-     b.branch_name,
-     mc.main_case_name,
-     lu.level_urgent_name,
-     s.status_name,
-     t.team_name,
-     e.employee_name
-   FROM 
-     receive_case_project.receive_case AS rc
-   JOIN 
-     receive_case_project.branch AS b ON rc.branch_id = b.branch_id
-   JOIN 
-     receive_case_project.main_case AS mc ON rc.main_case_id = mc.main_case_id
-   JOIN 
-     receive_case_project.level_urgent AS lu ON rc.urgent_level_id = lu.level_urgent_id
-   JOIN 
-     receive_case_project.employee AS e ON rc.employee_id = e.employee_id
-   JOIN 
-     receive_case_project.status AS s ON rc.status_id = s.status_id
-   JOIN 
-     receive_case_project.team AS t ON rc.team_id = t.team_id
-   WHERE 
-     (LOWER(rc.problem) LIKE $1 OR LOWER(b.branch_name) LIKE $2 OR LOWER(s.status_name) LIKE $3)
-   ORDER BY rc.receive_case_id DESC  -- การจัดเรียงตาม ID จากมากไปน้อย
-   LIMIT $4 OFFSET $5`,
+           rc.receive_case_id,
+           rc.create_date,
+           rc.problem,
+           rc.start_date,
+           rc.end_date,
+           rc.saev_em,
+           rc.correct,
+           b.branch_name,
+           mc.main_case_name,
+           lu.level_urgent_name,
+           s.status_name,
+           t.team_name,
+           e.employee_name
+         FROM 
+           receive_case_project.receive_case AS rc
+         JOIN 
+           receive_case_project.branch AS b ON rc.branch_id = b.branch_id
+         JOIN 
+           receive_case_project.main_case AS mc ON rc.main_case_id = mc.main_case_id
+         JOIN 
+           receive_case_project.level_urgent AS lu ON rc.urgent_level_id = lu.level_urgent_id
+         JOIN 
+           receive_case_project.employee AS e ON rc.employee_id = e.employee_id
+         JOIN 
+           receive_case_project.status AS s ON rc.status_id = s.status_id
+         JOIN 
+           receive_case_project.team AS t ON rc.team_id = t.team_id
+         WHERE 
+           LOWER(rc.problem) LIKE $1
+           OR LOWER(b.branch_name) LIKE $2
+           OR LOWER(mc.main_case_name) LIKE $3
+         ORDER BY rc.create_date DESC
+         LIMIT $4 OFFSET $5`,
         [`%${search}%`, `%${search}%`, `%${search}%`, itemsPerPage, offset]
       );
-
-      // Query จำนวนข้อมูลทั้งหมด
+  
+      // Query to count total items
       const countResult = await dbClient.query(
         `SELECT COUNT(*) AS total 
-         FROM receive_case_project.receive_case AS rc
-         JOIN receive_case_project.branch AS b ON rc.branch_id = b.branch_id
-         JOIN receive_case_project.status AS s ON rc.status_id = s.status_id
-         WHERE 
-           (LOWER(rc.problem) LIKE $1 OR LOWER(b.branch_name) LIKE $2 OR LOWER(s.status_name) LIKE $3)`,
-        [`%${search}%`, `%${search}%`, `%${search}%`]
+        FROM receive_case_project.receive_case AS rc
+        JOIN receive_case_project.branch AS b ON rc.branch_id = b.branch_id
+        JOIN receive_case_project.main_case AS mc ON rc.main_case_id = mc.main_case_id
+        JOIN receive_case_project.status AS s ON rc.status_id = s.status_id
+        WHERE LOWER(rc.problem) LIKE $1
+           OR LOWER(b.branch_name) LIKE $2
+           OR LOWER(mc.main_case_name) LIKE $3
+           OR LOWER(s.status_name) LIKE $4`,
+        [`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`]
       );
-
+  
       const totalItems = parseInt(countResult.rows[0].total);
       const totalPages = Math.ceil(totalItems / itemsPerPage);
-
+  
       return {
         cases: result.rows,
         totalPages,
@@ -173,7 +179,7 @@ export const receiveCaseRoutes = (app: Elysia) => {
       return { error: "ไม่สามารถดึงข้อมูลได้" };
     }
   });
-
+  
   app.get("/receive-caseJoin", getReceivecaseJoin);
 
   // ดึงข้อมูลจากฐานข้อมูล Byid
@@ -210,57 +216,68 @@ export const receiveCaseRoutes = (app: Elysia) => {
 
 
 // อัพเดท  เข้าดำเนินการ 
-  app.put("/update-case", async ({ body }: Context) => {
-    try {
-      const { receive_case_id, status_id, correct, selectedEmployees } = body as {
-        receive_case_id: number;
-        status_id: number;
-        correct: string;
-        selectedEmployees: number[];
-      };
+app.put("/update-case", async ({ body }: Context) => {
+  try {
+    // Destructuring and type assertion for request body
+    const { receive_case_id, status_id, correct, saev_em, start_date } = body as {
+      receive_case_id: number;
+      status_id: number;
+      correct: string;
+      saev_em: string;
+      start_date: string; // เพิ่ม start_date ในการรับข้อมูล
+    };
 
-      if (!receive_case_id || !status_id || !correct || !Array.isArray(selectedEmployees)) {
-        return { status: 400, body: { error: "Missing required fields or incorrect format" } };
-      }
+    // Log ข้อมูลที่ได้รับ
+    console.log('Received data:', { receive_case_id, status_id, correct, saev_em, start_date });
 
-      const statuses = [
-        { status_id: 1, status_name: "รอดำเนินการ" },
-        { status_id: 2, status_name: "กำลังดำเนินการ" },
-        { status_id: 3, status_name: "ดำเนินการเสร็จสิ้น" },
-      ];
-
-      const selectedStatus = statuses.find((status) => status.status_id === status_id);
-
-      if (!selectedStatus) {
-        return { status: 400, body: { error: "Invalid status_id" } };
-      }
-
-      await dbClient.query("BEGIN");
-
-      const result = await dbClient.query(
-        `UPDATE receive_case_project.receive_case
-         SET correct = $1, status_id = $2
-         WHERE receive_case_id = $3`,
-        [correct, selectedStatus.status_id, receive_case_id]
-      );
-
-      if (result.rowCount === 0) {
-        await dbClient.query("ROLLBACK");
-        return { status: 404, body: { error: "Case not found" } };
-      }
-
-      await dbClient.query("COMMIT");
-
-      return {
-        status: 200,
-        body: { success: "Case updated successfully", updatedStatusName: selectedStatus.status_name },
-      };
-    } catch (error) {
-      await dbClient.query("ROLLBACK");
-      console.error("Error in update-case route:", error);
-      return { status: 500, body: { error: "Internal server error" } };
+    // Check for missing required fields
+    if (!receive_case_id || !status_id || !correct || !saev_em || !start_date) {
+      return { status: 400, body: { error: "Missing required fields or incorrect format" } };
     }
-  });
+
+    // Query to find employee by name or employee_id
+    const employeeResult = await dbClient.query(
+      `SELECT employee_id FROM receive_case_project.employee WHERE employee_id = $1`, 
+      [saev_em]  // ใช้ employee_id แทน employee_name
+    );
+
+    // Log ค่าผลลัพธ์จากการค้นหาพนักงาน
+    console.log('Employee search result:', employeeResult);
+
+    // If employee not found, return error
+    if (employeeResult.rowCount === 0) {
+      return { status: 404, body: { error: "Employee not found" } };
+    }
+
+    // Extract employee ID
+    const employee_id = employeeResult.rows[0].employee_id;
+
+    // Log employee_id ที่ได้
+    console.log('Employee ID:', employee_id);
+
+    // Update the case in the database
+    const result = await dbClient.query(
+      `UPDATE receive_case_project.receive_case
+       SET correct = $1, status_id = $2, saev_em = $3, start_date = $4
+       WHERE receive_case_id = $5`,
+      [correct, status_id, employee_id, start_date, receive_case_id]  // เพิ่ม start_date ในการอัปเดต
+    );
+
+    // Log ผลลัพธ์ของการอัพเดท
+    console.log('Update result:', result);
+
+    // If case not found, return error
+    if (result.rowCount === 0) {
+      return { status: 404, body: { error: "Case not found" } };
+    }
+
+    // Return success response
+    return { status: 200, body: { success: "Case updated successfully" } };
+  } catch (error) {
+    console.error('Error in update-case route:', error);
+    return { status: 500, body: { error: "Internal server error" } };
+  }
+});
 
   // ฟังก์ชันอัปเดตข้อมูลByid
   app.put("/receive-case/:id", async (ctx) => {

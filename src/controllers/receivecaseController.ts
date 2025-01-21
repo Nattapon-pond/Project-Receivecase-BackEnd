@@ -215,6 +215,8 @@ export const getReceivecase = async (): Promise<ReceiveCase[]> => {
   }
 };
 
+
+
 // Function to retrieve receive_case data with JOINs
 export const getReceivecaseJoin = async () => {
   try {
@@ -329,10 +331,11 @@ export const updateReceiveCase = async (id: number, details: string) => {
 
 export const updateCase = async ({ body }: Context) => {
   try {
-    const { receive_case_id, status_id, correct, selectedEmployees } = body as {
+    const { receive_case_id, status_id, correct, saev_em, selectedEmployees } = body as {
       receive_case_id: number;
       status_id: number;
       correct: string;
+      saev_em: string;
       selectedEmployees: number[];
     };
 
