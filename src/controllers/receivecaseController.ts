@@ -43,11 +43,10 @@ export const addReceiveCase = async (receiveCaseData: any) => {
       status_id,
       create_date,
       problem,
-      start_date,
-      end_date,
+ 
       team_id,
       employee_id,
-      saev_em,
+      // saev_em,
       correct,
       details,
       // sub_case_ids, // ใช้ array ของ sub_case_ids
@@ -64,8 +63,8 @@ export const addReceiveCase = async (receiveCaseData: any) => {
       `
       INSERT INTO receive_case_project.receive_case 
       (main_case_id, branch_id, urgent_level_id, status_id, create_date, 
-      problem, start_date, end_date, team_id, employee_id,  saev_em, correct,details)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      problem, team_id, employee_id,details)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING receive_case_id;
     `,
       [
@@ -75,12 +74,9 @@ export const addReceiveCase = async (receiveCaseData: any) => {
         status_id,
         create_date,
         problem,
-        start_date,
-        end_date,
         team_id,
         employee_id,
-        saev_em,
-        correct,
+        // correct,
         details,
         
       ]
@@ -165,6 +161,8 @@ export const addReceiveCase = async (receiveCaseData: any) => {
 
     await dbClient.query("COMMIT");
 
+    
+
     return {
       message: "Receive case and img_data added successfully.",
       data: { receive_case_id: newReceiveCaseId },
@@ -235,7 +233,8 @@ export const getReceivecaseJoin = async () => {
     lu.level_urgent_name,
     e.employee_name,
     STRING_AGG(DISTINCT s.sub_case_name, ', ') AS combined_sub_case_names,  -- ใช้ DISTINCT เพื่อไม่ให้ข้อมูลซ้ำ
-    rc.correct
+    rc.correct,
+     rc.details
 FROM receive_case_project.receive_case AS rc
 LEFT JOIN receive_case_project.subcase AS sc 
     ON sc.receive_case_id = rc.receive_case_id
