@@ -43,8 +43,7 @@ export const addReceiveCase = async (receiveCaseData: any) => {
       status_id,
       create_date,
       problem,
- 
-      team_id,
+      team_id,  
       employee_id,
       // saev_em,
       correct,

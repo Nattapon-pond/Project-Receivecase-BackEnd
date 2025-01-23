@@ -209,7 +209,7 @@ export const authRoutes = (app: Elysia) => {
 
   // Route สำหรับเข้าสู่ระบบผู้ใช้
   app.post("/login", async (ctx) => {
-    console.log('Test')
+  
     try {
       // ตรวจสอบว่า Headers ระบุ Content-Type เป็น JSON หรือไม่
       const contentType = ctx.headers["content-type"];

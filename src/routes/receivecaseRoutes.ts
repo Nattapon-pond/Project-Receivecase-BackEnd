@@ -212,14 +212,13 @@ export const receiveCaseRoutes = (app: Elysia) => {
   // อัพเดท  เข้าดำเนินการ
   app.put("/update-case", async ({ body }: Context) => {
     try {
-      // Destructuring and type assertion for request body
       const { receive_case_id, status_id, correct, saev_em, start_date } =
         body as {
           receive_case_id: number;
           status_id: number;
           correct: string;
           saev_em: string;
-          start_date: string; // เพิ่ม start_date ในการรับข้อมูล
+          start_date: string; 
         };
 
       // Log ข้อมูลที่ได้รับ
