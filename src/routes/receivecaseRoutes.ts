@@ -354,6 +354,64 @@ export const receiveCaseRoutes = (app: Elysia) => {
     }
   });
 
+
+  app.get("/receive-charts", async (req) => {
+    try {
+      const year = req.query.year || new Date().getFullYear(); // รับค่าปีจาก query params หรือใช้ปีปัจจุบัน
+  
+      const queryResult = await dbClient.query(
+        `
+        SELECT 
+          TO_CHAR(rc.create_date, 'Month') AS month_name,
+          COUNT(CASE WHEN st.status_name = 'ดำเนินการเสร็จสิ้น' THEN 1 END) AS completed_count,
+          COUNT(CASE WHEN st.status_name = 'กำลังดำเนินการ' THEN 1 END) AS in_progress_count,
+          COUNT(CASE WHEN st.status_name = 'รอดำเนินการ' THEN 1 END) AS pending_count
+        FROM receive_case_project.receive_case AS rc
+        JOIN receive_case_project.status AS st 
+          ON rc.status_id = st.status_id
+        WHERE EXTRACT(YEAR FROM rc.create_date) = $1
+        GROUP BY TO_CHAR(rc.create_date, 'Month')
+        ORDER BY MIN(rc.create_date)
+        `,
+        [year]
+      );
+  
+      // ฟังก์ชันสร้างข้อมูลเดือนทั้งหมด
+      const generateMonths = () => [
+        { month_name: "January" },
+        { month_name: "February" },
+        { month_name: "March" },
+        { month_name: "April" },
+        { month_name: "May" },
+        { month_name: "June" },
+        { month_name: "July" },
+        { month_name: "August" },
+        { month_name: "September" },
+        { month_name: "October" },
+        { month_name: "November" },
+        { month_name: "December" },
+      ];
+  
+      const allMonths = generateMonths();
+  
+      // รวมข้อมูลเดือนทั้งหมดแม้ไม่มีข้อมูล
+      const finalData = allMonths.map((month) => {
+        const existingData = queryResult.rows.find((row) => row.month_name.trim() === month.month_name);
+        return {
+          month_name: month.month_name,
+          completed_count: existingData?.completed_count || 0,
+          in_progress_count: existingData?.in_progress_count || 0,
+          pending_count: existingData?.pending_count || 0,
+        };
+      });
+  
+      return { status: 200, body: finalData };
+    } catch (error) {
+      console.error("Database query error:", error);
+      return { status: 500, body: { error: "Failed to retrieve receive case" } };
+    }
+  });
+
   // Get combined data (together)
   app.get("/together", async (ctx) => {
     try {
