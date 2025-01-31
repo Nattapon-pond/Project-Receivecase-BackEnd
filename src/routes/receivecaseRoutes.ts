@@ -7,6 +7,7 @@ import {
   getReceivecaseJoin,
   getTogether,
   getSeparate,
+  sendMessageCase,
 } from "../controllers/receivecaseController";
 import dbClient from "../db/index";
 
@@ -40,11 +41,18 @@ export const receiveCaseRoutes = (app: Elysia) => {
     details: string;
   }
 
+  //  app.get("/APP", async (ctx) => {
+
+  //   const a = await dbClient.query("SELECT team_name FROM  receive_case_project.team where team_id = 1")
+  //   console.log(a.rows[0].team_name)
+  //   return a
+  //  });
+
   app.post("/receive-case", async (ctx) => {
     try {
       const newReceiveCase = ctx.body as ReceiveCase;
 
-      console.log(ctx.body);
+      // console.log(ctx.body);
 
       // กำหนดฟิลด์ที่ต้องใช้
       const requiredFields: string[] = [
@@ -76,12 +84,35 @@ export const receiveCaseRoutes = (app: Elysia) => {
       // ส่งข้อมูลไปยัง addReceiveCase
       const result = await addReceiveCase(newReceiveCase);
 
+      console.log("result", result)
+
       if (result.error) {
         return {
           status: 400,
           body: JSON.stringify(result),
         };
       }
+
+    //   const url = "https://asrs-api.agilisplatform.com/admin/line"
+
+    const [date, time] = newReceiveCase.create_date.split("T");
+
+      const data = {
+        type: 1,
+        date: date,
+        time: time,
+        header: newReceiveCase.problem,
+        reporter: result.data?.data2.empName?.employee_name,
+        team: result.data?.data2.teamName?.team_name,
+        branch: result.data?.data2.branchName?.branch_name,
+        priority: result.data?.data2.priority?.level_urgent_name,
+        detail: newReceiveCase.details,
+        secret_key: "global888"
+      }
+
+    if (data.type === 1) {
+      await sendMessageCase(data);
+    } 
 
       return {
         status: 201,
@@ -273,7 +304,7 @@ export const receiveCaseRoutes = (app: Elysia) => {
       );
 
       // Log ผลลัพธ์ของการอัพเดท
-      console.log("Update result:", result);
+      // console.log("Update result:", result);
 
       // If case not found, return error
       if (result.rowCount === 0) {
@@ -354,31 +385,290 @@ export const receiveCaseRoutes = (app: Elysia) => {
     }
   });
 
-  // Get combined data (together)
-  app.get("/together", async (ctx) => {
+    app.get("/receive-charts", async (req) => {
     try {
-      const result = await getTogether();
+      const year = req.query.year || new Date().getFullYear(); // รับค่าปีจาก query params หรือใช้ปีปัจจุบัน
+  
+      const queryResult = await dbClient.query(
+        `
+        SELECT 
+          TO_CHAR(rc.create_date, 'Month') AS month_name,
+          COUNT(CASE WHEN st.status_name = 'ดำเนินการเสร็จสิ้น' THEN 1 END) AS completed_count,
+          COUNT(CASE WHEN st.status_name = 'กำลังดำเนินการ' THEN 1 END) AS in_progress_count,
+          COUNT(CASE WHEN st.status_name = 'รอดำเนินการ' THEN 1 END) AS pending_count
+        FROM receive_case_project.receive_case AS rc
+        JOIN receive_case_project.status AS st 
+          ON rc.status_id = st.status_id
+        WHERE EXTRACT(YEAR FROM rc.create_date) = $1
+        GROUP BY TO_CHAR(rc.create_date, 'Month')
+        ORDER BY MIN(rc.create_date)
+        `,
+        [year]
+      );
+  
+      // ฟังก์ชันสร้างข้อมูลเดือนทั้งหมด
+      const generateMonths = () => [
+        { month_name: "January" },
+        { month_name: "February" },
+        { month_name: "March" },
+        { month_name: "April" },
+        { month_name: "May" },
+        { month_name: "June" },
+        { month_name: "July" },
+        { month_name: "August" },
+        { month_name: "September" },
+        { month_name: "October" },
+        { month_name: "November" },
+        { month_name: "December" },
+      ];
+  
+      const allMonths = generateMonths();
+  
+      // รวมข้อมูลเดือนทั้งหมดแม้ไม่มีข้อมูล
+      const finalData = allMonths.map((month) => {
+        const existingData = queryResult.rows.find((row) => row.month_name.trim() === month.month_name);
+        return {
+          month_name: month.month_name,
+          completed_count: existingData?.completed_count || 0,
+          in_progress_count: existingData?.in_progress_count || 0,
+          pending_count: existingData?.pending_count || 0,
+        };
+      });
+  
+      return { status: 200, body: finalData };
+    } catch (error) {
+      console.error("Database query error:", error);
+      return { status: 500, body: { error: "Failed to retrieve receive case" } };
+    }
+  });
+  
+
+    // Get combined data (together)
+   app.get("/together", async (ctx) => {
+    try {
+      const { startDate, endDate } = ctx.query; // รับค่า startDate และ endDate จาก query parameters
+  
+      // ตรวจสอบว่า startDate และ endDate มีค่าหรือไม่
+      if (!startDate || !endDate) {
+        return { status: 400, body: { error: "startDate and endDate are required" } };
+      }
+  
+      // เรียกใช้งาน getTogether โดยส่ง startDate และ endDate
+      const result = await getTogether(startDate, endDate);
+  
+      // หากไม่พบข้อมูล
       if (result.error) {
         return { status: 404, body: result };
       }
+  
+      // ส่งผลลัพธ์กลับ
       return { status: 200, body: result };
     } catch (error) {
       console.error("Error in GET /together:", error);
       return { status: 500, body: { error: "Failed to retrieve data" } };
     }
   });
-
+  
   // Get separate data (separate)
   app.get("/separate", async (ctx) => {
     try {
-      const result = await getSeparate();
+      const { startDate, endDate } = ctx.query; // รับค่า startDate และ endDate จาก query parameters
+  
+      // ตรวจสอบว่า startDate และ endDate มีค่าหรือไม่
+      if (!startDate || !endDate) {
+        return { status: 400, body: { error: "startDate and endDate are required" } };
+      }
+  
+      // เรียกใช้งาน getSeparate โดยส่ง startDate และ endDate
+      const result = await getSeparate(startDate, endDate);
+  
+      // หากไม่พบข้อมูล
       if (result.error) {
         return { status: 404, body: result };
       }
+  
+      // ส่งผลลัพธ์กลับ
       return { status: 200, body: result };
     } catch (error) {
       console.error("Error in GET /separate:", error);
       return { status: 500, body: { error: "Failed to retrieve data" } };
     }
   });
+  
+    
+  app.get("/charts", async (req) => {
+    try {
+      const startDate = req.query.startDate || `${new Date().getFullYear()}-01-01`; // เริ่มต้นที่ 1 มกราคม ปีปัจจุบัน
+      const endDate = req.query.endDate || new Date().toISOString().split('T')[0]; // วันที่ปัจจุบัน
+  
+      const queryResult = await dbClient.query(
+        `
+        SELECT 
+          TO_CHAR(rc.create_date, 'FMMonth') AS month_name,  
+          COUNT(CASE WHEN st.sub_case_id IN (1, 2, 15, 16) THEN 1 END) AS total_program,
+          COUNT(CASE WHEN st.sub_case_id IN (4, 5, 8, 9, 10, 17) THEN 1 END) AS total_electricity,
+          COUNT(CASE WHEN st.sub_case_id IN (20, 21) THEN 1 END) AS total_mechanical,
+          COUNT(CASE WHEN st.sub_case_id IN (18, 19, 6, 7) THEN 1 END) AS total_person,
+          COUNT(CASE WHEN st.sub_case_id IN (11, 14) THEN 1 END) AS total_other,
+          COUNT(CASE WHEN st.sub_case_id = 3 THEN 1 END) AS total_plc
+        FROM receive_case_project.receive_case AS rc
+        LEFT JOIN receive_case_project.subcase AS st 
+          ON rc.receive_case_id = st.receive_case_id
+        WHERE rc.create_date BETWEEN $1::DATE AND $2::DATE 
+        GROUP BY TO_CHAR(rc.create_date, 'FMMonth')  
+        ORDER BY MIN(rc.create_date);
+        `,
+        [startDate, endDate]
+      );
+  
+      // ฟังก์ชันสร้างข้อมูลเดือนทั้งหมด
+      const generateMonths = () => [
+        { month_name: "January" },
+        { month_name: "February" },
+        { month_name: "March" },
+        { month_name: "April" },
+        { month_name: "May" },
+        { month_name: "June" },
+        { month_name: "July" },
+        { month_name: "August" },
+        { month_name: "September" },
+        { month_name: "October" },
+        { month_name: "November" },
+        { month_name: "December" },
+      ];
+  
+      const allMonths = generateMonths();
+  
+      // รวมข้อมูลเดือนทั้งหมดแม้ไม่มีข้อมูล
+      const finalData = allMonths.map((month) => {
+        const existingData = queryResult.rows.find((row) => row.month_name === month.month_name);
+        return {
+          month_name: month.month_name,
+          total_program: existingData?.total_program || 0,
+          total_electricity: existingData?.total_electricity || 0,
+          total_mechanical: existingData?.total_mechanical || 0,
+          total_person: existingData?.total_person || 0,
+          total_other: existingData?.total_other || 0,
+          total_PLC: existingData?.total_plc || 0,
+        };
+      });
+  
+      return { status: 200, body: finalData };
+    } catch (error) {
+      console.error("Database query error:", error);
+      return { status: 500, body: { error: "Failed to retrieve receive case" } };
+    }
+  });
+
+  app.get("/percentage-change", async (req) => {
+
+    try {
+      const startDate = req.query.startDate || `${new Date().getFullYear()}-01-01`; // เริ่มต้นที่ 1 มกราคม ปีปัจจุบัน
+      const endDate = req.query.endDate || new Date().toISOString().split('T')[0]; // วันที่ปัจจุบัน
+      
+      // Query SQL เพื่อดึงข้อมูล
+      const queryResult = await dbClient.query(
+        `
+        WITH monthly_counts AS (
+          SELECT 
+              TO_CHAR(DATE_TRUNC('month', rc.create_date), 'YYYY-MM') AS period,
+              COUNT(*) AS case_count,
+              'month' AS type
+          FROM 
+              receive_case_project.subcase sc
+          JOIN 
+              receive_case_project.receive_case rc
+          ON 
+              sc.receive_case_id = rc.receive_case_id
+          WHERE 
+              rc.create_date BETWEEN $1 AND $2
+          GROUP BY 
+              DATE_TRUNC('month', rc.create_date)
+        ),
+        yearly_counts AS (
+          SELECT 
+              TO_CHAR(DATE_TRUNC('year', rc.create_date), 'YYYY') AS period,
+              COUNT(*) AS case_count,
+              'year' AS type
+          FROM 
+              receive_case_project.subcase sc
+          JOIN 
+              receive_case_project.receive_case rc
+          ON 
+              sc.receive_case_id = rc.receive_case_id
+          WHERE 
+              rc.create_date BETWEEN $1 AND $2
+          GROUP BY 
+              DATE_TRUNC('year', rc.create_date)
+        ),
+        combined AS (
+          SELECT * FROM monthly_counts
+          UNION ALL
+          SELECT * FROM yearly_counts
+        )
+        SELECT 
+            current_period.period,
+            current_period.case_count AS newValue,
+            previous_period.case_count AS oldValue,
+            CASE 
+                WHEN previous_period.case_count IS NOT NULL AND previous_period.case_count != 0 THEN 
+                    ((current_period.case_count - previous_period.case_count) / previous_period.case_count::FLOAT) * 100
+                ELSE 
+                    NULL
+            END AS percentage_change,
+            current_period.type
+        FROM 
+            combined current_period
+        LEFT JOIN 
+            combined previous_period
+        ON 
+            current_period.type = previous_period.type
+            AND current_period.period = 
+                TO_CHAR(TO_DATE(previous_period.period, 'YYYY-MM') + 
+                (CASE WHEN current_period.type = 'month' THEN INTERVAL '1 month' ELSE INTERVAL '1 year' END), 'YYYY-MM')
+        ORDER BY 
+            current_period.type, current_period.period;
+        `,
+        [startDate, endDate]
+      );
+  
+      // สร้างรายชื่อเดือนทั้งหมด
+      const generateMonths = (year: number) => [
+        { month_name: "January", period: `${year}-01` },
+        { month_name: "February", period: `${year}-02` },
+        { month_name: "March", period: `${year}-03` },
+        { month_name: "April", period: `${year}-04` },
+        { month_name: "May", period: `${year}-05` },
+        { month_name: "June", period: `${year}-06` },
+        { month_name: "July", period: `${year}-07` },
+        { month_name: "August", period: `${year}-08` },
+        { month_name: "September", period: `${year}-09` },
+        { month_name: "October", period: `${year}-10` },
+        { month_name: "November", period: `${year}-11` },
+        { month_name: "December", period: `${year}-12` },
+      ];
+  
+      // สร้างรายชื่อเดือนสำหรับปีปัจจุบัน
+      const year = new Date().getFullYear();
+      const allMonths = generateMonths(year);
+  
+      // จับคู่ข้อมูลที่ได้จาก SQL กับรายการเดือนที่สร้าง
+      const finalData = allMonths.map((month) => {
+        const existingData = queryResult.rows.find((row) => row.period === month.period);
+  
+        return {
+          month_name: month.month_name,
+          newValue: existingData?.newvalue || 0,
+          oldValue: existingData?.oldvalue || 0,
+          percentage_change: existingData?.percentage_change || 0,
+        };
+      });
+  
+      return { status: 200, body: finalData };
+    } catch (error) {
+      console.error("Database query error:", error);
+      return { status: 500, body: { error: "Failed to retrieve receive case" } };
+    }
+  });
+  
 };

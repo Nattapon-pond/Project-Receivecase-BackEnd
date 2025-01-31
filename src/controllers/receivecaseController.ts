@@ -80,10 +80,10 @@ export const addReceiveCase = async (receiveCaseData: any) => {
         
       ]
     );
-    console.log("result");
+    // console.log("result");
 
-    console.log("Insert into receive_case successful:", result.rows[0]);
-    console.log("Received data:", receiveCaseData);
+    // console.log("Insert into receive_case successful:", result.rows[0]);
+    // console.log("Received data:", receiveCaseData);
 
     const newReceiveCaseId = result.rows[0].receive_case_id;
 
@@ -160,11 +160,34 @@ export const addReceiveCase = async (receiveCaseData: any) => {
 
     await dbClient.query("COMMIT");
 
-    
+    const empName =  await dbClient.query(
+        `
+        SELECT employee_name FROM  receive_case_project.employee where employee_id = $1;
+      `,
+        [employee_id]
+      );
 
+        const teamName =  await dbClient.query(
+        `
+        SELECT team_name FROM  receive_case_project.team where team_id = $1;
+      `,
+        [team_id]
+      );
+
+      const branchName = await dbClient.query(`SELECT branch_name FROM  receive_case_project.branch where branch_id = $1;`, [branch_id])
+
+      const priority = await dbClient.query(`SELECT level_urgent_name FROM  receive_case_project.level_urgent where level_urgent_id = $1;`, [urgent_level_id])
+
+      console.log("priority" , priority.rows[0])
+      const data2 = {
+        empName: empName.rows[0],
+        teamName: teamName.rows[0],
+        branchName: branchName.rows[0],
+        priority: priority.rows[0]
+      }
     return {
       message: "Receive case and img_data added successfully.",
-      data: { receive_case_id: newReceiveCaseId },
+      data: { receive_case_id: newReceiveCaseId, data2 },
     };
   } catch (error) {
     await dbClient.query("ROLLBACK");
@@ -434,21 +457,34 @@ export const deleteReceiveCase = async (id: number) => {
 
 
 // นับรวม
-export const getTogether = async () => { 
+// นับรวม
+export const getTogether = async (startDate: string, endDate: string) => { 
   try {
-    const query = "SELECT SUM(1) AS total_sub_case_id FROM receive_case_project.subcase;";
-    const result = await dbClient.query(query);
+    const query = `
+      SELECT 
+        SUM(1) AS total_sub_case_id
+      FROM 
+        receive_case_project.subcase sc 
+      JOIN 
+        receive_case_project.receive_case rc
+      ON 
+        sc.receive_case_id = rc.receive_case_id
+      WHERE 
+        rc.create_date BETWEEN $1 AND $2;`; // ใช้ $1, $2 เพื่อป้องกัน SQL injection
+
+    const result = await dbClient.query(query, [startDate, endDate]); // ส่งค่า startDate, endDate ใน query
 
     if (result.rowCount === 0) {
-      return { error: "No subcase found" }; // เปลี่ยนข้อความจาก "No main cases found" ให้ตรงกับข้อมูล
+      return { error: "No subcase found" };
     }
 
-    return result.rows[0]; // ส่งกลับข้อมูลแถวแรก
+    return result.rows[0]; 
   } catch (error) {
     console.error("Database query error:", error);
     return { error: "Failed to retrieve subcases" };
   }
 };
+
 
 // นับแยก
 // 1 โปรแกรม
@@ -457,24 +493,247 @@ export const getTogether = async () => {
 // 4 บุคคล
 // 5 ปัจจัยภายนอก
 // 6 PLC
-export const getSeparate = async () => {  
+export const getSeparate = async (startDate: string, endDate: string) => {  
   try {
-    const query = `SELECT 
-  (SELECT SUM(1) FROM receive_case_project.subcase WHERE sub_case_id IN (1, 2, 15, 16)) AS total_program,
-  (SELECT SUM(1) FROM receive_case_project.subcase WHERE sub_case_id IN (4, 5, 8, 9, 10, 17)) AS total_electricity,
-  (SELECT SUM(1) FROM receive_case_project.subcase WHERE sub_case_id IN (20, 21)) AS total_mechanical,
-  (SELECT SUM(1) FROM receive_case_project.subcase WHERE sub_case_id IN (18, 19, 6, 7)) AS total_person,
-  (SELECT SUM(1) FROM receive_case_project.subcase WHERE sub_case_id IN (11, 14)) AS total_other,
-  (SELECT SUM(1) FROM receive_case_project.subcase WHERE sub_case_id IN (3)) AS total_PLC;`; 
-    const result = await dbClient.query(query);
+    const query = `
+SELECT 
+  SUM(CASE WHEN sc.sub_case_id IN (1, 2, 15, 16) THEN 1 ELSE 0 END) AS total_program,
+  SUM(CASE WHEN sc.sub_case_id IN (4, 5, 8, 9, 10, 17) THEN 1 ELSE 0 END) AS total_electricity,
+  SUM(CASE WHEN sc.sub_case_id IN (20, 21) THEN 1 ELSE 0 END) AS total_mechanical,
+  SUM(CASE WHEN sc.sub_case_id IN (18, 19, 6, 7) THEN 1 ELSE 0 END) AS total_person,
+  SUM(CASE WHEN sc.sub_case_id IN (11, 14) THEN 1 ELSE 0 END) AS total_other,
+  SUM(CASE WHEN sc.sub_case_id IN (3) THEN 1 ELSE 0 END) AS total_plc
+FROM 
+  receive_case_project.receive_case rc
+JOIN 
+  receive_case_project.subcase sc
+ON 
+  sc.receive_case_id = rc.receive_case_id
+WHERE 
+  rc.create_date BETWEEN $1 AND $2
+
+
+    `; 
+    const result = await dbClient.query(query, [startDate, endDate]);
 
     if (result.rowCount === 0) {
-      return { error: "No subcase found" }; // เปลี่ยนข้อความจาก "No main cases found" ให้ตรงกับข้อมูล
+      return { error: "No subcase found" };
     }
 
-    return result.rows[0]; // ส่งกลับข้อมูลแถวแรก
+    return result.rows[0]; 
   } catch (error) {
     console.error("Database query error:", error);
     return { error: "Failed to retrieve subcases" };
+  }
+};
+
+export const sendMessageCase = async (messageData: any) => {
+  const url = "https://api.line.me/v2/bot/message/push";
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer qaBROSnoW/Ewr1SPwWGWO9zH9S1VLosoKV0+b8bqtdZnG1WBMw9YmvV7uVOCAbNvK2dWzirC2lJq2uU23Engke3PJVLgdNDzLRZRkkydP69VvkEGu3UlUWjkFdTiA/AhQpsVBbsXZJpkqNpQxB+rIAdB04t89/1O/w1cDnyilFU=`, // ใส่ Channel Access Token ของ LINE Messaging API
+  };
+
+  const data = {
+    // to: "Cd4d4e2da5aa7ca636dcf2ba0f2cee25e", // ID ห้องasd
+    // to: "C639be5989f3b564628539dacf123aed4", // ID ห้อง test
+    to: "C3cd0ab80ed38bf8f859673b1e34f3bb9", // ID ห้อง ห้องหลัก
+    messages: [
+      {
+        type: "flex",
+        altText: "แจ้งปัญหา",
+        contents: {
+          type: "bubble",
+          styles: {
+            header: {
+              backgroundColor: "#ffcccc",
+            },
+            body: {
+              backgroundColor: "#ffffff",
+            },
+            footer: {
+              backgroundColor: "#f0f0f0",
+            },
+          },
+          header: {
+            type: "box",
+            layout: "vertical",
+            contents: [
+              {
+                type: "text",
+                text: "แจ้งปัญหา",
+                weight: "bold",
+                size: "lg",
+                color: "#ff5555",
+              },
+            ],
+          },
+          body: {
+            type: "box",
+            layout: "vertical",
+            contents: [
+              {
+                type: "box",
+                layout: "baseline",
+                contents: [
+                  {
+                    type: "text",
+                    text: "เวลา:",
+                    weight: "bold",
+                    flex: 1,
+                  },
+                  {
+                    type: "text",
+                    text: `${messageData.date} ${messageData.time}`,
+                    flex: 3,
+                  },
+                ],
+              },
+              {
+                type: "box",
+                layout: "baseline",
+                contents: [
+                  {
+                    type: "text",
+                    text: "สาขา:",
+                    weight: "bold",
+                    flex: 1,
+                  },
+                  {
+                    type: "text",
+                    text: `${messageData.branch}`,
+                    flex: 3,
+                  },
+                ],
+              },
+              {
+                type: "box",
+                layout: "baseline",
+                contents: [
+                  {
+                    type: "text",
+                    text: "ปัญหา:",
+                    weight: "bold",
+                    flex: 1,
+                  },
+                  {
+                    type: "text",
+                    text: `${messageData.header}`,
+                    flex: 3,
+                  },
+                ],
+              },
+              {
+                type: "box",
+                layout: "baseline",
+                contents: [
+                  {
+                    type: "text",
+                    text: "รายละเอียด:",
+                    weight: "bold",
+                    flex: 1,
+                  },
+                  {
+                    type: "text",
+                    text: `${messageData.detail}`,
+                    flex: 3,
+                    wrap: true,
+                  },
+                ],
+              },
+              {
+                type: "box",
+                layout: "baseline",
+                contents: [
+                  {
+                    type: "text",
+                    text: "ระดับความเร่งด่วน:",
+                    weight: "bold",
+                    flex: 1,
+                  },
+                  {
+                    type: "text",
+                    text: `${messageData.priority}`,
+                    flex: 3,
+                  },
+                ],
+              },
+              {
+                type: "box",
+                layout: "baseline",
+                contents: [
+                  {
+                    type: "text",
+                    text: "ผู้รับแจ้ง:",
+                    weight: "bold",
+                    flex: 1,
+                  },
+                  {
+                    type: "text",
+                    text: `${messageData.reporter}`,
+                    flex: 3,
+                  },
+                ],
+              },
+              {
+                type: "box",
+                layout: "baseline",
+                contents: [
+                  {
+                    type: "text",
+                    text: "ผู้แก้ไข:",
+                    weight: "bold",
+                    flex: 1,
+                  },
+                  {
+                    type: "text",
+                    text: `${messageData.team}`,
+                    flex: 3,
+                  },
+                ],
+              },
+            ],
+            spacing: "md",
+          },
+          footer: {
+            type: "box",
+            layout: "vertical",
+            contents: [
+              {
+                type: "button",
+                action: {
+                  type: "uri",
+                  label: "ดูรายละเอียดเพิ่มเติม",
+                  uri: "https://project-receivecase.vercel.app/dashboard/",
+                },
+                style: "primary",
+                color: "#ff5555",
+              },
+            ],
+          },
+        },
+      },
+    ],
+  };
+
+  console.log(JSON.stringify(data, null, 2));
+  console.log(headers);
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(data, null, 2),
+    });
+
+    if (!response.ok) {
+      // throw new Error(`LINE API Error: ${response.statusText}`);
+      throw new Error(`LINE API Error: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error: any) {
+    console.error("Error sending reply:", error.message);
+    return { error: error.message };
   }
 };

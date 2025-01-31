@@ -21,7 +21,7 @@ const dbClient = new Client({
   connectionString:
     // process.env.DATABASE_URL || // อ่านค่าจาก Environment Variable,
     // "postgresql://postgres:p@ssw0rd@192.168.200.146:5432/asrs_local?search_path=receive_case_project",
-  "postgres://postgres:12345678@localhost:8000/project_receive_case", // ใช้ Default URL หากไม่มีใน Environment Variable
+  "postgresql://postgres:p@ssw0rd@localhost:5432/intern_db", // ใช้ Default URL หากไม่มีใน Environment Variable
 
   // "postgres://postgres:12345678@localhost:8000/receive_case_project", // ใช้ Default URL หากไม่มีใน Environment Variable
 });
@@ -55,7 +55,7 @@ const app = new Elysia();
 // เพิ่ม Middleware CORS  // เชื่อม หนัาบ้าน
 app.use(
   cors({
-    origin: "http://localhost:3033", // URL ของ Frontend
+    origin: "*", // URL ของ Frontend
     methods: ["GET", "POST", "PUT", "DELETE"],
   })
 );

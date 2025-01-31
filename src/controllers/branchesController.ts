@@ -3,11 +3,11 @@ import dbClient from "../db";
 // Get All
 export const getbranch = async () => {
   try {
-    console.log("Executing query...");
+    // console.log("Executing query...");
     const result = await dbClient.query(
       "SELECT * FROM receive_case_project.branch"
     );
-    console.log("Query result:", result.rows);
+    // console.log("Query result:", result.rows);
 
     if (result.rows.length === 0) {
       console.log("No branch found in the database.");
