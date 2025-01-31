@@ -443,8 +443,8 @@ export const receiveCaseRoutes = (app: Elysia) => {
   });
   
 
-    // Get combined data (together)
-   app.get("/together", async (ctx) => {
+  // Get combined data (together)
+  app.get("/together", async (ctx) => {
     try {
       const { startDate, endDate } = ctx.query; // รับค่า startDate และ endDate จาก query parameters
   
